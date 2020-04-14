@@ -6,7 +6,7 @@ import datetime
 __author__= 'Claudio Mazzoi'
 
 
-STRIP_SPECIAL_CHARS = re.compile("[^A-Za-z., ]+")
+STRIP_SPECIAL_CHARS = re.compile("[^A-Za-z ]+")
 DATASET_PATH = 'D:\\\\Datasets\\financial-news-dataset\\financial-news-dataset-raw\\'
 BLOOMBERG_ART = glob.glob(DATASET_PATH + 'bloomberg_news\\*', recursive=False)
 REUTERS_ART = glob.glob(DATASET_PATH + 'reuters_news\\*', recursive=False)
@@ -38,6 +38,10 @@ def reader(file):
                 article = article.replace('.net', ' ')
                 article = article.replace(' . ', ' ')
                 article = article.replace(' , ', ' ')
+                article = article.replace(' u k ', ' uk ')
+                article = article.replace(' u s ', ' us ')
+                article = article.replace(' u e ', ' ue ')
+                article = article.replace(' s ', ' ')
                 article = re.sub(' +', ' ', article) # remove extra spaces
                 article = article.strip()
                 the_file.write(article + '\n')
