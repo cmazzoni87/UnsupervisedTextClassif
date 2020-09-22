@@ -19,16 +19,26 @@ DATASET_PATH = 'D:\\\\Datasets\\financial-news-dataset\\financial-news-dataset-r
 BLOOMBERG_ART = glob.glob(DATASET_PATH + 'bloomberg_news\\*', recursive=False)
 REUTERS_ART = glob.glob(DATASET_PATH + 'reuters_news\\*', recursive=False)
 
-def reader(params):
+def reader(params, headline=True):
     file = params
     file_name = 'preprocessed_data_unsupervised'
+    if headline:
+        file_name = 'preprocessed_data_unsupervised_headlines'
     suffixes = {' u k ': ' unitedkindom ', ' u s ': ' unitedstates ', ' e u ': ' eurounion ', ' s ': ' ',
                 ' we ve ': ' we ', ' t z bloomber news ': ' '}
     encoding = "mbcs"   #'utf-8'
     with open('{}.txt'.format(file_name), 'a') as the_file:
         with open(file, "r", encoding=encoding) as f:
-            article = f.read()[4:]
-            article = article.replace('\n', ' ')
+            if headline:
+                if 'reuters' in file:
+                    article = f.read().split('\n')[0]
+                else:
+                    article = file.split('\\')[-1].replace('-', ' ')
+                # print(file)
+                # print(article)
+            else:
+                article = f.read()[4:]
+                article = article.replace('\n', ' ')
             if '========================' not in article:
                 if 'reuters_news' in file:
                     article = re.sub('^.*?(Reuters)', "", article) # remove all string before reaches reuters
@@ -67,7 +77,7 @@ def reader(params):
                 article = article.replace(".gov ", " ")
                 article = article.replace(" s ", " ")
                 article = re.sub(STRIP_SPECIAL_CHARS, ' ', article) #remove special char
-                #
+
                 article = article.replace(" u.s ", " united states ")
                 article = article.replace(" u.s. ", " united states ")
                 article = article.replace(" u.k ", " united kindom ")
@@ -85,7 +95,7 @@ def reader(params):
                 article = article.replace(" re ", "")
                 article = article.replace('sn t ', 'snt ')
                 article = article.replace(' i d ', ' id ')
-                #
+
                 for key, val in suffixes.items():
                     article = article.replace(key, val)
                 article = re.sub(' +', ' ', article) # remove extra spaces
@@ -108,14 +118,16 @@ if __name__ == '__main__':
     for q in REUTERS_ART:
         files.extend(glob.glob(q + '\\*'))
     files = [file for file in files if os.stat(file).st_size > 0]
-    files = [file for file in files
-             if 'earning' in file.split('\\')[-1]
-             or 'deal' in file.split('\\')[-1]
-             or 'profit' in file.split('\\')[-1]
-             or 'controversy' in file.split('\\')[-1]
-             or 'stock' in file.split('\\')[-1]
-             or 'sale' in file.split('\\')[-1]
-             or 'aquire' in file.split('\\')[-1]]
+    # files = [file for file in files
+    #          if 'earning' in file.split('\\')[-1]
+    #          or 'deal' in file.split('\\')[-1]
+    #          or 'profit' in file.split('\\')[-1]
+    #          or 'controversy' in file.split('\\')[-1]
+    #          or 'stock' in file.split('\\')[-1]
+    #          or 'sale' in file.split('\\')[-1]
+    #          or 'aquire' in file.split('\\')[-1]
+    #          or 'files' in file.split('\\')[-1]
+    #          ]
 
     print('Process Started at:')
     print(datetime.datetime.now())
