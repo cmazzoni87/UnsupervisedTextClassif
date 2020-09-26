@@ -8,17 +8,30 @@ import numpy as np
 from nltk.corpus import stopwords
 import string as string_val
 import random
-from sklearn import metrics
-from sklearn.metrics import accuracy_score, confusion_matrix, precision_score, recall_score, f1_score
-
+import tensorflow as tf
 
 
 stop = stopwords.words('english')
 MAIN_PATH = 'C:\\\\Users\\cmazz\\PycharmProjects\\TextClassification\\project_data\\'
-# PATH = MAIN_PATH + 'preprocessed_data_unsupervised.txt'
 type_voc = '_headlines'
 # type_voc = ''
 PATH = MAIN_PATH + 'preprocessed_data_unsupervised{}.txt'.format(type_voc)
+
+class WordsTwoVec:
+    def __init__(self, df):
+        self.sent = df.tolist()
+        self.phrases = Phrases(self.sent, min_count=1, threshold=1)
+        self.bigram = Phraser(self.phrases)
+        self.sentences = self.bigram[self.sent]
+        self.w2v_model = Word2Vec(min_count=3, window=4, size=300, sample=1e-5, alpha=0.03,
+                                  min_alpha=0.0007, negative=20, workers=multiprocessing.cpu_count()-1)
+    def train(self):
+        self.w2v_model.build_vocab(self.sentences)
+        self.w2v_model.train(self.sentences, total_examples=self.w2v_model.corpus_count, epochs=30, report_delay=1)
+        self.w2v_model.init_sims(replace=True)
+
+    def save(self, name):
+            self.w2v_model.save('models\\{}'.format(name))
 
 def replace_commons(string):
     reformat = ['us ', 'ag ', 'china ', 'japan ', 'euro ', 'eu ', 'hong kong', 'uk ', 'united ', 'york ',
@@ -27,7 +40,6 @@ def replace_commons(string):
         res = ''.join(random.choices(string_val.ascii_lowercase, k=5))
         string = string.replace(r, res + ' ')
     return string
-
 
 def str_split(string):
     split_str = string.split()
@@ -103,11 +115,10 @@ def get_corpus(PATH):
 
 def build_model(model_corpus):
     init = WordsTwoVec(model_corpus)
-    init.w2v_model.build_vocab(init.sentences)  # [init.sentences]
-    init.w2v_model.train(init.sentences, total_examples=init.w2v_model.corpus_count, epochs=30, report_delay=1)
-    init.w2v_model.init_sims(replace=True)
-    init.w2v_model.save('models\\unsupervised_word2vec{}.model'.format(type_voc))
+    init.train()
+    init.save('unsupervised_word2vec{}.model'.format(type_voc))
     word_vectors = init.w2v_model.wv
+    del init.w2v_model # save memory
     model = KMeans(n_clusters=2, max_iter=1000, random_state=True, n_init=100).fit(X=word_vectors.vectors)
     words = pd.DataFrame(word_vectors.vocab.keys())
     words.columns = ['words']
@@ -117,11 +128,7 @@ def build_model(model_corpus):
     words['cluster_value'] = [1 if i == 0 else -1 for i in words.cluster]
     words['closeness_score'] = words.apply(lambda x: 1 / (model.transform([x['vectors']]).min()), axis=1)
     words['sentiment_coeff'] = words['closeness_score'] * words['cluster_value']
-
     words.to_csv('metrics_results\\predictive_scores.csv', index=False)
-    # words[['words', 'sentiment_coeff']].to_csv('metrics_results\\sentiment_dictionary{}.csv'.format(type_voc), index=False)
-    # sentiment_map = words[['words', 'sentiment_coeff']]
-    # sentiment_map.to_csv('metrics_results\\sentiment_dictionary{}.csv'.format(type_voc), index=False)
     return words
 
 def get_predictions(sentiment_map, uncured_articles):
@@ -132,8 +139,9 @@ def get_predictions(sentiment_map, uncured_articles):
     features = pd.Series(tfidf.get_feature_names())
     transformed = tfidf.transform(file_weighting['Articles'])
     replaced_tfidf_scores = file_weighting.apply(lambda x: replace_tfidf_words(x, transformed, features), axis=1)
-    replaced_closeness_scores = file_weighting['Articles'].apply(lambda x: list(map(lambda y: replace_sentiment_words(y, sentiment_dict), x.split())))
-    replacement_df = pd.DataFrame(data=[replaced_closeness_scores, replaced_tfidf_scores, file_weighting['Articles']]).T  # ,file_weighting.rate
+    replaced_closeness_scores = file_weighting['Articles'].apply(
+        lambda x: list(map(lambda y: replace_sentiment_words(y, sentiment_dict), x.split())))
+    replacement_df = pd.DataFrame(data=[replaced_closeness_scores, replaced_tfidf_scores, file_weighting['Articles']]).T
     replacement_df['rate'] = np.nan
     replacement_df.columns = ['sentiment_coeff', 'tfidf_scores', 'sentence', 'sentiment']
     replacement_df['sentiment_rate'] = replacement_df.apply(
@@ -142,33 +150,19 @@ def get_predictions(sentiment_map, uncured_articles):
     replacement_df.to_csv('metrics_results\\results{}.csv'.format(type_voc), index=False)
     return replacement_df
 
-class WordsTwoVec:
-    def __init__(self, df):
-        self.sent = df.tolist() # df['Articles'].tolist()
-        # ([self.sentences], min_count=1, threshold=1)
-        self.phrases = Phrases(self.sent, min_count=1, threshold=1)  #try with the list check if you need it on bottom too
-        self.bigram = Phraser(self.phrases)
-        # sent = [row for row in df['Articles']]
-        self.sentences = self.bigram[self.sent]
-        self.w2v_model = Word2Vec(min_count=3,
-                     window=4,
-                     size=300,
-                     sample=1e-5,
-                     alpha=0.03,
-                     min_alpha=0.0007,
-                     negative=20,
-                     workers=multiprocessing.cpu_count()-1)
-
 
 if __name__=='__main__':
-    BUILD = True
+    BUILD = False
     model_corpus, uncured_articles = get_corpus(PATH)
     if BUILD:
         words = build_model(model_corpus)
+        words.to_csv('metrics_results\\sentiment_dictionary{}.csv'.format(type_voc), index=False)
     else:
         words = pd.read_csv('metrics_results\\sentiment_dictionary{}.csv'.format(type_voc))
+        # word_vectors = Word2Vec.load('models\\unsupervised_word2vec{}.model'.format(type_voc)).wv
+        # word_vectors.save_word2vec_format("vect.txt", binary=False)
+
     sentiment_map = words[['words', 'sentiment_coeff']]
     predictions = get_predictions(sentiment_map, uncured_articles)
-
 
 
