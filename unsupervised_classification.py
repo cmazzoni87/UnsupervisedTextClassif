@@ -8,14 +8,17 @@ import numpy as np
 from nltk.corpus import stopwords
 import string as string_val
 import random
+import datetime
 import tensorflow as tf
 
 
 stop = stopwords.words('english')
 MAIN_PATH = 'C:\\\\Users\\cmazz\\PycharmProjects\\TextClassification\\project_data\\'
-type_voc = '_headlines'
+type_voc = '_short'  #'_headlines'
 # type_voc = ''
 PATH = MAIN_PATH + 'preprocessed_data_unsupervised{}.txt'.format(type_voc)
+time_stamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+
 
 class WordsTwoVec:
     def __init__(self, df):
@@ -55,20 +58,12 @@ def replace_sentiment_words(word, sentiment_dict):
     try:
         out = sentiment_dict[word]
     except KeyError:
-        out = 0
+        out = 0 #this is an issue
     return out
 
 def create_tfidf_dictionary(x, transformed_file, features):
     '''
     create dictionary for each input sentence x, where each word has assigned its tfidf score
-
-    inspired  by function from this wonderful article:
-    https://medium.com/analytics-vidhya/automated-keyword-extraction-from-articles-using-nlp-bfd864f41b34
-
-    x - row of dataframe, containing sentences, and their indexes,
-    transformed_file - all sentences transformed with TfidfVectorizer
-    features - names of all words in corpus used in TfidfVectorizer
-
     '''
     vector_coo = transformed_file[x.name].tocoo()
     vector_coo.col = features.iloc[vector_coo.col].values
@@ -78,12 +73,7 @@ def create_tfidf_dictionary(x, transformed_file, features):
 def replace_tfidf_words(x, transformed_file, features):
     '''
     replacing each word with it's calculated tfidf dictionary with scores of each word
-    x - row of dataframe, containing sentences, and their indexes,
-    transformed_file - all sentences transformed with TfidfVectorizer
-    features - names of all words in corpus used in TfidfVectorizer
     '''
-    # if x.values[0] == 'china biggest steelmaker said its third quarter net income rose percent and reversed three straight quarters of declines as demand recovered':
-    #     print('stop')
 
     dictionary = create_tfidf_dictionary(x, transformed_file, features)
     try:
@@ -119,16 +109,17 @@ def build_model(model_corpus):
     init.save('unsupervised_word2vec{}.model'.format(type_voc))
     word_vectors = init.w2v_model.wv
     del init.w2v_model # save memory
-    model = KMeans(n_clusters=2, max_iter=1000, random_state=True, n_init=100).fit(X=word_vectors.vectors)
+    model = KMeans(n_clusters=3, max_iter=1000, random_state=True, n_init=100).fit(X=word_vectors.vectors) #n_clusters=2
     words = pd.DataFrame(word_vectors.vocab.keys())
     words.columns = ['words']
+    words = words[words['words'].str.len() > 3].reset_index(drop=True)
     words['vectors'] = words['words'].apply(lambda x: word_vectors.wv[f'{x}'])
     words['cluster'] = words['vectors'].apply(lambda x: model.predict([np.array(x)]))
-    words.cluster = words['cluster'].apply(lambda x: x[0])
-    words['cluster_value'] = [1 if i == 0 else -1 for i in words.cluster]
+    words['cluster'] = words['cluster'].apply(lambda x: x[0])
+    words['cluster_value'] = [1 if i == 0 else -1 if i == 1 else 0 for i in words['cluster']]
     words['closeness_score'] = words.apply(lambda x: 1 / (model.transform([x['vectors']]).min()), axis=1)
     words['sentiment_coeff'] = words['closeness_score'] * words['cluster_value']
-    words.to_csv('metrics_results\\predictive_scores.csv', index=False)
+    words.to_csv('metrics_results\\predictive_scores_{}.csv'.format(time_stamp), index=False)
     return words
 
 def get_predictions(sentiment_map, uncured_articles):
@@ -146,23 +137,30 @@ def get_predictions(sentiment_map, uncured_articles):
     replacement_df.columns = ['sentiment_coeff', 'tfidf_scores', 'sentence', 'sentiment']
     replacement_df['sentiment_rate'] = replacement_df.apply(
         lambda x: np.array(x.loc['sentiment_coeff']) @ np.array(x.loc['tfidf_scores']), axis=1)
-    replacement_df['prediction'] = (replacement_df['sentiment_rate'] > 0).astype('int8')
-    replacement_df.to_csv('metrics_results\\results{}.csv'.format(type_voc), index=False)
+    # replacement_df['prediction'] = (replacement_df['sentiment_rate'] > 0).astype('int8')
+    replacement_df.loc[(replacement_df['sentiment_rate'] >= 150), 'prediction'] = 1
+    replacement_df.loc[(replacement_df['sentiment_rate'] >= -149) & (replacement_df['sentiment_rate'] <= 149), 'prediction'] = 0
+    replacement_df.loc[(replacement_df['sentiment_rate'] <= -150), 'prediction'] = -1
+    replacement_df.to_csv('metrics_results\\results{0}_{1}.csv'.format(type_voc, time_stamp), index=False)
     return replacement_df
 
 
 if __name__=='__main__':
-    BUILD = False
+    BUILD = True
     model_corpus, uncured_articles = get_corpus(PATH)
+    sample_test = uncured_articles.sample(n=40, random_state=1)
+    uncured_articles = uncured_articles.drop(sample_test.index)
+    sample_test.reset_index(drop=True, inplace=True)
+    uncured_articles.reset_index(drop=True, inplace=True)
     if BUILD:
         words = build_model(model_corpus)
-        words.to_csv('metrics_results\\sentiment_dictionary{}.csv'.format(type_voc), index=False)
+        words.to_csv('metrics_results\\sentiment_dictionary{0}_{1}.csv'.format(type_voc, time_stamp), index=False)
     else:
-        words = pd.read_csv('metrics_results\\sentiment_dictionary{}.csv'.format(type_voc))
+        words = pd.read_csv('metrics_results\\sentiment_dictionary{0}_{1}.csv'.format(type_voc, time_stamp))
         # word_vectors = Word2Vec.load('models\\unsupervised_word2vec{}.model'.format(type_voc)).wv
         # word_vectors.save_word2vec_format("vect.txt", binary=False)
 
     sentiment_map = words[['words', 'sentiment_coeff']]
-    predictions = get_predictions(sentiment_map, uncured_articles)
+    predictions = get_predictions(sentiment_map, sample_test) #uncured_articles)
 
 
