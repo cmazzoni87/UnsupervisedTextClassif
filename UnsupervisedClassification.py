@@ -215,6 +215,3 @@ if __name__ == '__main__':
     else:
         word_vectors = Word2Vec.load('models\\unsupervised_word2vec{}.model'.format(type_voc)).wv
         display_wordlist(word_vectors, list(word_vectors.vocab))
-        # words = init_cluster(word_vectors)
-    # sentiment_map = words[['words', 'sentiment_coeff']]
-    # predictions = get_predictions(sentiment_map, sample_test)  # uncured_articles)
