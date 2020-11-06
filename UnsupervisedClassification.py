@@ -119,7 +119,7 @@ def build_model(model_corpus):
     init.train()
     init.save('unsupervised_word2vec{}.model'.format(type_voc))
     word_vectors = init.w2v_model.wv
-    del init.w2v_model  # save memory
+    del init.w2v_model  # delete to save memory
     return word_vectors
 
 
